@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -279,3 +279,23 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+
+# Prima Automotive customizations
+doctype_js = {"Work Order": "public/js/work_order.js"}
+after_migrate = "prima_automotive.install.after_migrate"
+
+doc_events = {
+	"Stock Entry": {
+		"validate": "prima_automotive.overrides.stock_entry.validate",
+		"before_submit": "prima_automotive.overrides.stock_entry.before_submit",
+		"on_submit": "prima_automotive.overrides.stock_entry.on_submit",
+		"on_cancel": "prima_automotive.overrides.stock_entry.on_cancel",
+	},
+	"Work Order": {
+		"before_validate": "prima_automotive.overrides.work_order.before_validate",
+		"validate": "prima_automotive.overrides.work_order.validate",
+	},
+	"Purchase Receipt": {
+		"on_submit": "prima_automotive.overrides.purchase_receipt.on_submit",
+	},
+}
