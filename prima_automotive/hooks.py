@@ -281,7 +281,10 @@ required_apps = ["erpnext"]
 
 
 # Prima Automotive customizations
-doctype_js = {"Work Order": "public/js/work_order.js"}
+doctype_js = {
+	"Work Order": "public/js/work_order.js",
+	"Production Plan": "public/js/production_plan.js",
+}
 after_migrate = "prima_automotive.install.after_migrate"
 
 doc_events = {
@@ -293,7 +296,12 @@ doc_events = {
 	},
 	"Work Order": {
 		"before_validate": "prima_automotive.overrides.work_order.before_validate",
+		"before_insert": "prima_automotive.overrides.work_order.before_insert",
 		"validate": "prima_automotive.overrides.work_order.validate",
+	},
+	"Production Plan": {
+		"before_validate": "prima_automotive.overrides.production_plan.before_validate",
+		"validate": "prima_automotive.overrides.production_plan.validate",
 	},
 	"Purchase Receipt": {
 		"on_submit": "prima_automotive.overrides.purchase_receipt.on_submit",

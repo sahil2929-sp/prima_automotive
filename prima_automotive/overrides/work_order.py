@@ -8,9 +8,29 @@ def item_warehouse(item_code, company):
 	)
 
 
+def bom_source_warehouse(bom_no, item_code):
+	return bom_no and frappe.db.get_value(
+		"BOM Item", {"parent": bom_no, "item_code": item_code}, "source_warehouse"
+	)
+
+
 @frappe.whitelist()
 def get_item_warehouse(item_code: str, company: str):
 	return item_warehouse(item_code, company)
+
+
+@frappe.whitelist()
+def get_wo_warehouses(item_code: str, company: str, bom_no: str | None = None):
+	"""Target = item default; per-input source from BOM / item default; header only if all agree."""
+	bom_no = bom_no or frappe.db.get_value("Item", item_code, "default_bom")
+	rows = bom_no and frappe.get_all("BOM Item", {"parent": bom_no}, ["item_code", "source_warehouse"])
+	by_item = {r.item_code: r.source_warehouse or item_warehouse(r.item_code, company) for r in rows or []}
+	sources = set(by_item.values())
+	return {
+		"target": item_warehouse(item_code, company),
+		"source": sources.pop() if len(sources) == 1 else None,
+		"rows": by_item,
+	}
 
 
 def before_validate(doc, method=None):
@@ -28,8 +48,26 @@ def before_validate(doc, method=None):
 		doc.fg_warehouse = target
 
 
+def before_insert(doc, method=None):
+	"""Production Plan inserts WOs with ignore_validate, so fill warehouses here too."""
+	if doc.production_plan:
+		doc.fg_warehouse = item_warehouse(doc.production_item, doc.company) or doc.fg_warehouse
+	set_sources(doc)
+
+
 def validate(doc, method=None):
-	"""Source = each component's default warehouse when BOM doesn't set one."""
+	set_sources(doc)
+
+
+def set_sources(doc):
+	"""Source per row = BOM row warehouse, else the component's default warehouse.
+	New WOs always take it (the header source copies one value to every row)."""
 	for row in doc.required_items:
-		if not row.source_warehouse:
-			row.source_warehouse = item_warehouse(row.item_code, doc.company)
+		if doc.is_new() or not row.source_warehouse:
+			wh = bom_source_warehouse(doc.bom_no, row.item_code) or item_warehouse(row.item_code, doc.company)
+			if wh:
+				row.source_warehouse = wh
+	sources = {r.source_warehouse for r in doc.required_items}
+	if doc.is_new() or not doc.source_warehouse:
+		# header source copies to every row, so set it only when all rows agree
+		doc.source_warehouse = sources.pop() if len(sources) == 1 else None
