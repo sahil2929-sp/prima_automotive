@@ -19,7 +19,9 @@ def before_validate(doc, method=None):
 	if not doc.sub_assembly_warehouse:
 		doc.sub_assembly_warehouse = wip_warehouse(doc.company)
 	ready = doc.po_items and all(r.item_code and r.bom_no and r.planned_qty for r in doc.po_items)
-	if ready and not doc.sub_assembly_items:
+	# without a warehouse ERPNext throws, which would block the save
+	has_wh = doc.sub_assembly_warehouse or not doc.skip_available_sub_assembly_item
+	if ready and has_wh and not doc.sub_assembly_items:
 		doc.get_sub_assembly_items()
 
 

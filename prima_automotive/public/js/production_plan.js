@@ -12,6 +12,8 @@ const auto_sub_assembly = frappe.utils.debounce((frm) => {
 		if (frm.doc.docstatus || !rows.length) return;
 		if (!rows.every((r) => r.item_code && r.bom_no && r.planned_qty)) return;
 		await set_sub_assembly_warehouse(frm);
+		// ERPNext needs this warehouse when skipping available stock; don't pop its error
+		if (frm.doc.skip_available_sub_assembly_item && !frm.doc.sub_assembly_warehouse) return;
 		frm.trigger("get_sub_assembly_items");
 	});
 }, 600);
