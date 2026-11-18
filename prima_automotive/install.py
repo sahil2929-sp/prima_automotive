@@ -15,7 +15,7 @@ CUSTOM_FIELDS = {
 	],
 	"Work Order": [
 		{"fieldname": "item_group", "label": "Item Group", "fieldtype": "Link", "options": "Item Group",
-			"insert_after": "item_name", "fetch_from": "production_item.item_group", "read_only": 1,
+			"insert_after": "bom_no", "fetch_from": "production_item.item_group", "read_only": 1,
 			"in_list_view": 1, "in_standard_filter": 1},
 	],
 	"Batch": [
