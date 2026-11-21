@@ -23,6 +23,13 @@ CUSTOM_FIELDS = {
 			"in_list_view": 1, "in_standard_filter": 1, "bold": 1,
 			"description": "Client standard, e.g. P-6 / 7090 / 7089"},
 	],
+	"BOM": [
+		{"fieldname": "item_group", "label": "Item Group", "fieldtype": "Link", "options": "Item Group",
+			"insert_after": "item_name", "fetch_from": "item.item_group", "read_only": 1,
+			"in_list_view": 1, "in_standard_filter": 1},
+		{"fieldname": "standard", "label": "Standard", "fieldtype": "Data", "insert_after": "item_group",
+			"fetch_from": "item.standard", "read_only": 1, "in_list_view": 1, "in_standard_filter": 1},
+	],
 	"Batch": [
 		{"fieldname": "traceability_section", "label": "Traceability", "fieldtype": "Section Break",
 			"insert_after": "reference_name", "collapsible": 0},
@@ -41,6 +48,12 @@ PROPERTY_SETTERS = [
 	("Work Order", "item_name", "in_list_view", "1", "Check"),
 	("Work Order", "bom_no", "in_list_view", "0", "Check"),
 	("Work Order", "item_name", "in_standard_filter", "1", "Check"),
+	# BOM list: item name, group, standard; filters on active / default; no cost columns
+	("BOM", "item_name", "in_list_view", "1", "Check"),
+	("BOM", "is_active", "in_standard_filter", "1", "Check"),
+	("BOM", "is_default", "in_standard_filter", "1", "Check"),
+	("BOM", "total_cost", "in_list_view", "0", "Check"),
+	("BOM", "has_variants", "in_list_view", "0", "Check"),
 ]
 
 
@@ -52,6 +65,8 @@ def after_migrate():
 	make_property_setter("Item", None, "search_fields", "item_name,standard,item_group,customer_code",
 		"Data", for_doctype=True, validate_fields_for_doctype=False)
 	backfill_work_order_item_group()
+	frappe.db.sql("""update `tabBOM` b join `tabItem` i on i.name = b.item
+		set b.item_group = i.item_group, b.standard = i.standard""")
 
 
 def backfill_work_order_item_group():
