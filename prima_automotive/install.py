@@ -40,8 +40,14 @@ CUSTOM_FIELDS = {
 			"insert_after": "reference_name", "collapsible": 0},
 		{"fieldname": "trace_lot", "label": "Trace Lot (Origin Batch)", "fieldtype": "Small Text",
 			"insert_after": "traceability_section", "read_only": 1, "no_copy": 1},
+		{"fieldname": "work_order", "label": "Work Order", "fieldtype": "Link", "options": "Work Order",
+			"insert_after": "trace_lot", "read_only": 1, "no_copy": 1, "in_list_view": 1, "in_standard_filter": 1},
+		{"fieldname": "sales_order", "label": "Sales Order", "fieldtype": "Link", "options": "Sales Order",
+			"insert_after": "work_order", "read_only": 1, "no_copy": 1, "in_list_view": 1, "in_standard_filter": 1},
+		{"fieldname": "production_plan", "label": "Production Plan", "fieldtype": "Link", "options": "Production Plan",
+			"insert_after": "sales_order", "read_only": 1, "no_copy": 1, "in_standard_filter": 1},
 		{"fieldname": "source_batches", "label": "Source Batches", "fieldtype": "Table",
-			"options": "Batch Source", "insert_after": "trace_lot", "read_only": 1, "no_copy": 1},
+			"options": "Batch Source", "insert_after": "production_plan", "read_only": 1, "no_copy": 1},
 	],
 }
 
