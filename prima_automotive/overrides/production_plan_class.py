@@ -9,6 +9,7 @@ class PrimaProductionPlan(ProductionPlan):
 	"""Work Orders follow the shop floor, one finished good at a time:
 	item 1 Cutting > Boring > Stamping > FG, then item 2 ..., so WO numbers read in sequence."""
 
+	@frappe.whitelist()  # the form's Create > Work Order button calls this
 	def make_work_order(self):
 		from erpnext.manufacturing.doctype.work_order.work_order import get_default_warehouse
 
