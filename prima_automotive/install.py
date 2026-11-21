@@ -30,6 +30,11 @@ CUSTOM_FIELDS = {
 		{"fieldname": "standard", "label": "Standard", "fieldtype": "Data", "insert_after": "item_group",
 			"fetch_from": "item.standard", "read_only": 1, "in_list_view": 1, "in_standard_filter": 1},
 	],
+	"Purchase Receipt": [
+		{"fieldname": "po_received_percent", "label": "PO Received %", "fieldtype": "Percent",
+			"insert_after": "supplier_name", "read_only": 1, "no_copy": 1, "allow_on_submit": 1,
+			"description": "Share of the PO qty received up to this receipt; 90% or more counts as fully received"},
+	],
 	"Batch": [
 		{"fieldname": "traceability_section", "label": "Traceability", "fieldtype": "Section Break",
 			"insert_after": "reference_name", "collapsible": 0},
@@ -54,6 +59,11 @@ PROPERTY_SETTERS = [
 	("BOM", "is_default", "in_standard_filter", "1", "Check"),
 	("BOM", "total_cost", "in_list_view", "0", "Check"),
 	("BOM", "has_variants", "in_list_view", "0", "Check"),
+	# no purchase invoices: hide billed % on PO / PR
+	("Purchase Order", "per_billed", "in_list_view", "0", "Check"),
+	("Purchase Order", "per_billed", "hidden", "1", "Check"),
+	("Purchase Receipt", "per_billed", "in_list_view", "0", "Check"),
+	("Purchase Receipt", "per_billed", "hidden", "1", "Check"),
 ]
 
 

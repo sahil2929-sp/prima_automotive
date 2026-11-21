@@ -281,7 +281,13 @@ required_apps = ["erpnext"]
 
 
 # Prima Automotive customizations
+doctype_list_js = {
+	"Purchase Receipt": "public/js/purchase_status.js",
+	"Purchase Order": "public/js/purchase_status.js",
+}
 doctype_js = {
+	"Purchase Order": "public/js/purchase_no_bill.js",
+	"Purchase Receipt": "public/js/purchase_no_bill.js",
 	"Work Order": "public/js/work_order.js",
 	"Production Plan": "public/js/production_plan.js",
 }
@@ -305,5 +311,7 @@ doc_events = {
 	},
 	"Purchase Receipt": {
 		"on_submit": "prima_automotive.overrides.purchase_receipt.on_submit",
+		"before_cancel": "prima_automotive.overrides.purchase_receipt.before_cancel",
+		"on_cancel": "prima_automotive.overrides.purchase_receipt.on_cancel",
 	},
 }
