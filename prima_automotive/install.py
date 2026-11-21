@@ -18,6 +18,11 @@ CUSTOM_FIELDS = {
 			"insert_after": "bom_no", "fetch_from": "production_item.item_group", "read_only": 1,
 			"in_list_view": 1, "in_standard_filter": 1},
 	],
+	"Item": [
+		{"fieldname": "standard", "label": "Standard", "fieldtype": "Data", "insert_after": "item_group",
+			"in_list_view": 1, "in_standard_filter": 1, "bold": 1,
+			"description": "Client standard, e.g. P-6 / 7090 / 7089"},
+	],
 	"Batch": [
 		{"fieldname": "traceability_section", "label": "Traceability", "fieldtype": "Section Break",
 			"insert_after": "reference_name", "collapsible": 0},
@@ -43,6 +48,9 @@ def after_migrate():
 	create_custom_fields(CUSTOM_FIELDS, update=True)
 	for doctype, field, prop, value, ptype in PROPERTY_SETTERS:
 		make_property_setter(doctype, field, prop, value, ptype, validate_fields_for_doctype=False)
+	# show standard in item dropdowns (same names exist under different standards)
+	make_property_setter("Item", None, "search_fields", "item_name,standard,item_group,customer_code",
+		"Data", for_doctype=True, validate_fields_for_doctype=False)
 	backfill_work_order_item_group()
 
 
