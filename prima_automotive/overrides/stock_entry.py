@@ -84,9 +84,9 @@ def set_standard_scrap_qty(doc):
 
 
 def row_batches(row):
-	"""[(batch_no, qty)] for a stock entry row (bundle is set in db after submit)."""
+	"""[(batch_no, qty)] for a stock row (bundle is set in db after submit)."""
 	bundle = row.serial_and_batch_bundle or frappe.db.get_value(
-		"Stock Entry Detail", row.name, "serial_and_batch_bundle"
+		row.doctype, row.name, "serial_and_batch_bundle"
 	)
 	if bundle:
 		return frappe.get_all(
@@ -95,7 +95,7 @@ def row_batches(row):
 			fields=["batch_no", "qty"],
 			as_list=True,
 		)
-	return [(row.batch_no, row.transfer_qty)] if row.batch_no else []
+	return [(row.batch_no, row.get("transfer_qty") or row.get("stock_qty"))] if row.batch_no else []
 
 
 def output_batches(doc):
