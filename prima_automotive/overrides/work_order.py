@@ -3,8 +3,13 @@ from frappe import _
 
 
 def item_warehouse(item_code, company):
+	"""Item's default warehouse, else its Item Group's."""
 	return frappe.db.get_value(
-		"Item Default", {"parent": item_code, "company": company}, "default_warehouse"
+		"Item Default", {"parenttype": "Item", "parent": item_code, "company": company}, "default_warehouse"
+	) or frappe.db.get_value(
+		"Item Default",
+		{"parenttype": "Item Group", "parent": frappe.db.get_value("Item", item_code, "item_group"), "company": company},
+		"default_warehouse",
 	)
 
 
@@ -30,6 +35,7 @@ def get_wo_warehouses(item_code: str, company: str, bom_no: str | None = None):
 		"target": item_warehouse(item_code, company),
 		"source": sources.pop() if len(sources) == 1 else None,
 		"rows": by_item,
+		"skip_transfer": int(frappe.db.get_value("Item", item_code, "item_group") != "Cutting"),
 	}
 
 
@@ -42,21 +48,45 @@ def before_validate(doc, method=None):
 		doc.set("required_items", [])  # validate rebuilds them single-level
 		frappe.msgprint(_("Use Multi-Level BOM was turned off: each stage is a separate Work Order."), alert=True)
 
-	# Target = production item's default warehouse (forced for Production Plan WOs)
+	set_target_and_scrap(doc)
+	set_skip_transfer(doc)
+
+
+def set_skip_transfer(doc):
+	"""Only Cutting moves RM from its store to WIP; later stages already sit in WIP."""
+	group = frappe.db.get_value("Item", doc.production_item, "item_group")
+	doc.skip_transfer = 0 if group == "Cutting" else 1
+
+
+def set_target_and_scrap(doc):
+	"""Target = production item's warehouse unless the user picked another one.
+	ERPNext pre-fills the company FG warehouse, so that value counts as not picked."""
+	company_fg, company_scrap = frappe.get_cached_value(
+		"Company", doc.company, ["default_fg_warehouse", "default_scrap_warehouse"]
+	)
 	target = item_warehouse(doc.production_item, doc.company)
-	if target and (doc.production_plan or not doc.fg_warehouse):
+	if target and (doc.production_plan or doc.fg_warehouse in (None, "", company_fg)):
 		doc.fg_warehouse = target
+	if not doc.scrap_warehouse:
+		doc.scrap_warehouse = company_scrap
 
 
 def before_insert(doc, method=None):
 	"""Production Plan inserts WOs with ignore_validate, so fill warehouses here too."""
-	if doc.production_plan:
-		doc.fg_warehouse = item_warehouse(doc.production_item, doc.company) or doc.fg_warehouse
+	set_target_and_scrap(doc)
+	set_skip_transfer(doc)
 	set_sources(doc)
+	set_finished_good(doc)
 
 
 def validate(doc, method=None):
 	set_sources(doc)
+	set_finished_good(doc)
+
+
+def set_finished_good(doc):
+	group = doc.get("item_group") or frappe.db.get_value("Item", doc.production_item, "item_group")
+	doc.is_finished_good = int(group == "Finished Goods")
 
 
 def set_sources(doc):
@@ -71,3 +101,36 @@ def set_sources(doc):
 	if doc.is_new() or not doc.source_warehouse:
 		# header source copies to every row, so set it only when all rows agree
 		doc.source_warehouse = sources.pop() if len(sources) == 1 else None
+
+
+def before_submit(doc, method=None):
+	check_previous_stage(doc)
+
+
+def check_previous_stage(wo):
+	"""A stage (WO submit or production) waits until the previous stage of the same
+	Production Plan chain is complete."""
+	if not wo.production_plan:
+		return
+	fg_row = wo.production_plan_item or frappe.db.get_value(
+		"Production Plan Sub Assembly Item", wo.production_plan_sub_assembly_item, "production_plan_item")
+	prev_rows = frappe.get_all("Production Plan Sub Assembly Item", {"parent": wo.production_plan,
+		"production_plan_item": fg_row, "parent_item_code": wo.production_item, "qty": [">", 0]}, pluck="name")
+	if not prev_rows:
+		return  # first stage, or the previous stage is covered from stock
+	prev = frappe.get_all("Work Order", {"production_plan_sub_assembly_item": ["in", prev_rows], "docstatus": ["<", 2]},
+		["name", "production_item", "status"])
+	pending = [w for w in prev if w.status not in ("Completed", "Closed")]
+	if pending or not prev:
+		from frappe.utils import get_link_to_form
+
+		rows = "".join(
+			f"<li>{get_link_to_form('Work Order', w.name)}: {get_link_to_form('Item', w.production_item)}"
+			f" &ndash; <b>{_(w.status)}</b></li>" for w in pending
+		) or f"<li>{_('Work Order not created')}</li>"
+		frappe.throw(
+			_("Complete the previous stage of this chain first:") + f"<ul>{rows}</ul>"
+			+ _("Then {0} can go ahead ({1}).").format(
+				get_link_to_form("Item", wo.production_item), get_link_to_form("Production Plan", wo.production_plan)),
+			title=_("Previous Stage Pending"),
+		)
