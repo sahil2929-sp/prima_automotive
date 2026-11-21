@@ -6,6 +6,82 @@ from frappe.utils import flt
 def validate(doc, method=None):
 	if doc.purpose == "Manufacture":
 		set_standard_scrap_qty(doc)
+		set_output_batch(doc)
+
+
+def set_output_batch(doc):
+	"""Show the output batch on the draft: STAGE/FY/<running no of main input batch>."""
+	main_input = main_input_batch(doc)
+	if not main_input:
+		return
+	for row in doc.items:
+		if not row.is_finished_item or row.batch_no or row.serial_and_batch_bundle:
+			continue
+		if not frappe.db.get_value("Item", row.item_code, "has_batch_no"):
+			continue
+		name = batch_name_for(row.item_code, main_input, doc)
+		if not name:
+			continue
+		if not frappe.db.exists("Batch", name):
+			# no reference yet: ERPNext deletes referenced batches with a deleted draft and fails;
+			# set_batch_orders adds it on submit, an unused batch is reused by the next draft
+			frappe.get_doc({"doctype": "Batch", "batch_id": name, "item": row.item_code}).insert(ignore_permissions=True)
+		row.use_serial_batch_fields = 1
+		row.batch_no = name
+
+
+def main_input_batch(doc):
+	"""Input batch with the largest qty; on a draft without input batches,
+	the batches moved to WIP by this Work Order's transfers."""
+	rows = [d for d in doc.items if d.s_warehouse and not d.is_finished_item and not d.secondary_item_type]
+	inputs = [(b, abs(flt(q))) for d in rows for b, q in row_batches(d) if b]
+	if not inputs and doc.work_order:
+		transfers = frappe.get_all("Stock Entry", {"work_order": doc.work_order, "docstatus": 1,
+			"purpose": "Material Transfer for Manufacture"}, pluck="name")
+		items = {d.item_code for d in rows}
+		for se in transfers:
+			for d in frappe.get_doc("Stock Entry", se).items:
+				if d.item_code in items:
+					inputs += [(b, abs(flt(q))) for b, q in row_batches(d) if b]
+	if not inputs:  # no transfer (later stages): the batch FIFO will pick at submit
+		inputs = [(b, q) for d in rows for b, q in fifo_batches(d)]
+	return inputs and max(inputs, key=lambda x: x[1])[0]
+
+
+def fifo_batches(row):
+	from erpnext.stock.doctype.serial_and_batch_bundle.serial_and_batch_bundle import get_auto_batch_nos
+
+	if not frappe.db.get_value("Item", row.item_code, "has_batch_no"):
+		return []
+	picked = get_auto_batch_nos(frappe._dict(item_code=row.item_code, warehouse=row.s_warehouse,
+		qty=row.transfer_qty or row.qty, based_on="FIFO"))
+	return [(b.batch_no, flt(b.qty)) for b in picked or [] if b.get("batch_no")]
+
+
+def batch_name_for(item_code, main_input, doc):
+	"""First free name; an unused batch made for an earlier draft is reused."""
+	from erpnext.accounts.utils import get_fiscal_year
+
+	parts = main_input.split("/")
+	prefix = (frappe.db.get_value("Item", item_code, "batch_number_series") or "").split("/")[0].strip(".")
+	if len(parts) < 3 or not prefix:
+		return None  # input not in PREFIX/FY/NO format
+	fy = get_fiscal_year(doc.posting_date, company=doc.company)[0]
+	base = name = f"{prefix}/{fy}/{'/'.join(parts[2:])}"
+	n = 1
+	while frappe.db.exists("Batch", name) and not unused_batch(name, item_code, doc.name):
+		n += 1
+		name = f"{base}-{n}"
+	return name
+
+
+def unused_batch(name, item_code, entry):
+	"""Same item, no stock moved, and not held by another draft entry."""
+	return (
+		frappe.db.get_value("Batch", name, "item") == item_code
+		and not frappe.db.exists("Serial and Batch Entry", {"batch_no": name, "docstatus": 1})
+		and not frappe.db.exists("Stock Entry Detail", {"batch_no": name, "docstatus": 0, "parent": ["!=", entry]})
+	)
 
 
 def before_submit(doc, method=None):
@@ -20,6 +96,7 @@ def on_submit(doc, method=None):
 	if doc.purpose == "Manufacture":
 		rename_output_batches(doc)
 		link_batches(doc)
+		set_batch_orders(doc)
 
 
 def rename_output_batches(doc):
@@ -80,7 +157,7 @@ def set_standard_scrap_qty(doc):
 		if not bom_row:
 			continue
 		bom_qty = flt(frappe.db.get_value("BOM", bom_row.parent, "quantity")) or 1
-		d.standard_scrap_qty = flt(bom_row.stock_qty) * fg_qty / bom_qty
+		d.standard_scrap_qty = flt(flt(bom_row.stock_qty) * fg_qty / bom_qty, 3)
 
 
 def row_batches(row):
@@ -100,6 +177,20 @@ def row_batches(row):
 
 def output_batches(doc):
 	return {b for d in doc.items if d.is_finished_item for b, _q in row_batches(d)}
+
+
+def set_batch_orders(doc):
+	"""Output batch remembers its Work Order, Production Plan and Sales Order."""
+	if not doc.work_order:
+		return
+	wo = frappe.db.get_value("Work Order", doc.work_order, ["sales_order", "production_plan"], as_dict=True)
+	so = wo.sales_order
+	if not so and wo.production_plan:  # sub-assembly WOs carry no SO; use the plan's if it has one
+		sos = frappe.get_all("Production Plan Sales Order", {"parent": wo.production_plan}, pluck="sales_order")
+		so = sos[0] if len(set(sos)) == 1 else None
+	for batch in output_batches(doc):
+		frappe.db.set_value("Batch", batch, {"work_order": doc.work_order, "sales_order": so,
+			"production_plan": wo.production_plan, "reference_doctype": "Stock Entry", "reference_name": doc.name})
 
 
 def link_batches(doc):

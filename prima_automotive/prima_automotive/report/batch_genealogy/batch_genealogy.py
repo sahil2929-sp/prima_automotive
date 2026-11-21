@@ -22,17 +22,20 @@ def get_columns():
 		{"label": _("Stage"), "fieldname": "stage", "fieldtype": "Data", "width": 110},
 		{"label": _("Qty"), "fieldname": "qty", "fieldtype": "Float", "width": 100},
 		{"label": _("Stock Entry"), "fieldname": "stock_entry", "fieldtype": "Link", "options": "Stock Entry", "width": 140},
+		{"label": _("Work Order"), "fieldname": "work_order", "fieldtype": "Link", "options": "Work Order", "width": 150},
+		{"label": _("Sales Order"), "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 150},
 		{"label": _("Supplier"), "fieldname": "supplier", "fieldtype": "Link", "options": "Supplier", "width": 160},
 		{"label": _("Trace Lot"), "fieldname": "trace_lot", "fieldtype": "Data", "width": 180},
 	]
 
 
 def batch_row(batch, link, indent):
-	b = frappe.db.get_value("Batch", batch, ["item", "item_name", "supplier", "trace_lot"], as_dict=True) or {}
+	b = frappe.db.get_value("Batch", batch, ["item", "item_name", "supplier", "trace_lot", "work_order", "sales_order"], as_dict=True) or {}
 	return {
 		"batch": batch, "indent": indent, "item": b.get("item"), "item_name": b.get("item_name"),
 		"stage": b.get("item") and frappe.db.get_value("Item", b.item, "item_group"),
 		"qty": link.qty if link else None, "stock_entry": link.stock_entry if link else None,
+		"work_order": b.get("work_order"), "sales_order": b.get("sales_order"),
 		"supplier": b.get("supplier"), "trace_lot": b.get("trace_lot"),
 	}
 
