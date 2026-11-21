@@ -17,6 +17,9 @@ CUSTOM_FIELDS = {
 		{"fieldname": "item_group", "label": "Item Group", "fieldtype": "Link", "options": "Item Group",
 			"insert_after": "bom_no", "fetch_from": "production_item.item_group", "read_only": 1,
 			"in_list_view": 1, "in_standard_filter": 1},
+		{"fieldname": "is_finished_good", "label": "Finished Good", "fieldtype": "Check",
+			"insert_after": "item_group", "read_only": 1, "in_standard_filter": 1,
+			"description": "Production item is in the Finished Goods item group"},
 	],
 	"Item": [
 		{"fieldname": "standard", "label": "Standard", "fieldtype": "Data", "insert_after": "item_group",
@@ -59,6 +62,11 @@ PROPERTY_SETTERS = [
 	("Work Order", "item_name", "in_list_view", "1", "Check"),
 	("Work Order", "bom_no", "in_list_view", "0", "Check"),
 	("Work Order", "item_name", "in_standard_filter", "1", "Check"),
+	# WO list and filters: which Sales Order / Production Plan the order belongs to
+	("Work Order", "sales_order", "in_list_view", "1", "Check"),
+	("Work Order", "sales_order", "in_standard_filter", "1", "Check"),
+	("Work Order", "production_plan", "in_list_view", "1", "Check"),
+	("Work Order", "production_plan", "in_standard_filter", "1", "Check"),
 	# BOM list: item name, group, standard; filters on active / default; no cost columns
 	("BOM", "item_name", "in_list_view", "1", "Check"),
 	("BOM", "is_active", "in_standard_filter", "1", "Check"),
@@ -81,8 +89,22 @@ def after_migrate():
 	make_property_setter("Item", None, "search_fields", "item_name,standard,item_group,customer_code",
 		"Data", for_doctype=True, validate_fields_for_doctype=False)
 	backfill_work_order_item_group()
+	move_field("Work Order", "production_plan", after="sales_order")
 	frappe.db.sql("""update `tabBOM` b join `tabItem` i on i.name = b.item
 		set b.item_group = i.item_group, b.standard = i.standard""")
+
+
+def move_field(doctype, fieldname, after):
+	"""Reorder a standard field via the field_order property setter (as Customize Form does)."""
+	import json
+
+	order = [f.fieldname for f in frappe.get_meta(doctype).fields]
+	if fieldname not in order or after not in order or order.index(fieldname) == order.index(after) + 1:
+		return
+	order.remove(fieldname)
+	order.insert(order.index(after) + 1, fieldname)
+	make_property_setter(doctype, None, "field_order", json.dumps(order), "Data",
+		for_doctype=True, validate_fields_for_doctype=False)
 
 
 def backfill_work_order_item_group():
@@ -90,3 +112,4 @@ def backfill_work_order_item_group():
 		"""update `tabWork Order` wo join `tabItem` i on i.name = wo.production_item
 		set wo.item_group = i.item_group where ifnull(wo.item_group, '') = ''"""
 	)
+	frappe.db.sql("""update `tabWork Order` set is_finished_good = (item_group = 'Finished Goods')""")

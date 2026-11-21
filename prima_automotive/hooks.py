@@ -281,6 +281,9 @@ required_apps = ["erpnext"]
 
 
 # Prima Automotive customizations
+override_doctype_class = {
+	"Production Plan": "prima_automotive.overrides.production_plan_class.PrimaProductionPlan",
+}
 doctype_list_js = {
 	"Purchase Receipt": "public/js/purchase_status.js",
 	"Purchase Order": "public/js/purchase_status.js",
@@ -295,6 +298,7 @@ after_migrate = "prima_automotive.install.after_migrate"
 
 doc_events = {
 	"Stock Entry": {
+		"before_validate": "prima_automotive.overrides.stock_entry.before_validate",
 		"validate": "prima_automotive.overrides.stock_entry.validate",
 		"before_submit": "prima_automotive.overrides.stock_entry.before_submit",
 		"on_submit": "prima_automotive.overrides.stock_entry.on_submit",
@@ -303,6 +307,7 @@ doc_events = {
 	"Work Order": {
 		"before_validate": "prima_automotive.overrides.work_order.before_validate",
 		"before_insert": "prima_automotive.overrides.work_order.before_insert",
+		"before_submit": "prima_automotive.overrides.work_order.before_submit",
 		"validate": "prima_automotive.overrides.work_order.validate",
 	},
 	"Production Plan": {

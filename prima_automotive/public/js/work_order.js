@@ -9,6 +9,8 @@ const set_wo_warehouses = frappe.utils.debounce((frm) => {
 			bom_no: frm.doc.bom_no,
 		});
 		if (wh.target) frm.set_value("fg_warehouse", wh.target);
+		// only Cutting transfers RM to WIP; later stages already sit in WIP
+		if (frm.is_new()) frm.set_value("skip_transfer", wh.skip_transfer);
 		// set header without its handler, which would copy one value into every row
 		frm.doc.source_warehouse = wh.source || "";
 		frm.refresh_field("source_warehouse");

@@ -2,6 +2,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+from prima_automotive.overrides.work_order import check_previous_stage
+
 
 def validate(doc, method=None):
 	if doc.purpose == "Manufacture":
@@ -82,6 +84,12 @@ def unused_batch(name, item_code, entry):
 		and not frappe.db.exists("Serial and Batch Entry", {"batch_no": name, "docstatus": 1})
 		and not frappe.db.exists("Stock Entry Detail", {"batch_no": name, "docstatus": 0, "parent": ["!=", entry]})
 	)
+
+
+def before_validate(doc, method=None):
+	# runs before ERPNext's stock checks (also on draft save), so the user sees why the stage is blocked
+	if doc.docstatus < 2 and doc.purpose == "Manufacture" and doc.work_order:
+		check_previous_stage(frappe.get_doc("Work Order", doc.work_order))
 
 
 def before_submit(doc, method=None):
