@@ -99,6 +99,10 @@ def after_migrate():
 	# show standard in item dropdowns (same names exist under different standards)
 	make_property_setter("Item", None, "search_fields", "item_name,standard,item_group,customer_code",
 		"Data", for_doctype=True, validate_fields_for_doctype=False)
+	# client layouts (PO / MRN) are the default print for purchase documents
+	for doctype, print_format in (("Purchase Order", "Prima Purchase Order"), ("Purchase Receipt", "Prima Material Receipt")):
+		make_property_setter(doctype, None, "default_print_format", print_format, "Data",
+			for_doctype=True, validate_fields_for_doctype=False)
 	backfill_work_order_item_group()
 	move_field("Work Order", "production_plan", after="sales_order")
 	frappe.db.sql("""update `tabBOM` b join `tabItem` i on i.name = b.item
