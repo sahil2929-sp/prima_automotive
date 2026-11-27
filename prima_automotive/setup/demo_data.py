@@ -339,7 +339,7 @@ def produce(item_code, qty, actual_scrap=None):
 	for row in se.items:
 		if row.secondary_item_type == "Scrap" and actual_scrap is not None:
 			row.qty = actual_scrap
-	se.machine_no, se.operator_name = "M-01", "Demo Operator"
+	se.machine, se.operator = demo_machine_and_operator(COMPANY)
 	se.insert(ignore_permissions=True)
 	se.submit()
 	print(f"  {item_code}: {wo.name} / {se.name}")
@@ -367,3 +367,14 @@ def sample_production():
 	produce("WSH-M10-ST", 1000)
 	produce("WSH-M10-CH", 1000, actual_scrap=0.25)
 	produce("WSH-M10-FG", 1000)
+
+
+def demo_machine_and_operator(company):
+	"""A Workstation and an Employee for demo production entries."""
+	if not frappe.db.exists("Workstation", "M-01"):
+		frappe.get_doc({"doctype": "Workstation", "workstation_name": "M-01"}).insert(ignore_permissions=True)
+	emp = frappe.db.get_value("Employee", {"first_name": "Demo Operator", "company": company})
+	if not emp:
+		emp = frappe.get_doc({"doctype": "Employee", "first_name": "Demo Operator", "company": company, "gender": "Male",
+			"date_of_birth": "1990-01-01", "date_of_joining": "2024-01-01"}).insert(ignore_permissions=True).name
+	return "M-01", emp
