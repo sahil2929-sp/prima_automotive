@@ -339,7 +339,7 @@ def produce(item_code, qty, actual_scrap=None):
 	for row in se.items:
 		if row.secondary_item_type == "Scrap" and actual_scrap is not None:
 			row.qty = actual_scrap
-	se.actual_scrap_entered = 1
+	se.machine_no, se.operator_name = "M-01", "Demo Operator"
 	se.insert(ignore_permissions=True)
 	se.submit()
 	print(f"  {item_code}: {wo.name} / {se.name}")
