@@ -20,14 +20,19 @@ def check_machine_operator(doc):
 
 
 def set_output_batch(doc):
-	"""Output batch from the item's batch series (e.g. CT/26-27/00001), shown on the draft.
-	All daily entries of one Work Order share that Work Order's batch for the stage."""
+	"""Output batch keeps the input batch's number with this stage's prefix
+	(RM/26-27/00006 -> CT/26-27/00006 -> BR/26-27/00006), never a -2 suffix.
+	All daily entries of one Work Order share that batch."""
 	for row in doc.items:
 		if not row.is_finished_item or row.batch_no or row.serial_and_batch_bundle:
 			continue
 		if not frappe.db.get_value("Item", row.item_code, "has_batch_no"):
 			continue
-		row.batch_no = work_order_batch(row.item_code, doc.work_order) or new_batch(row.item_code, doc)
+		row.batch_no = (
+			work_order_batch(row.item_code, doc.work_order)
+			or input_numbered_batch(row.item_code, doc)
+			or new_batch(row.item_code, doc)
+		)
 		row.use_serial_batch_fields = 1
 
 
@@ -38,9 +43,54 @@ def work_order_batch(item_code, work_order):
 	)
 
 
-def new_batch(item_code, doc):
+def input_numbered_batch(item_code, doc):
+	"""STAGE/FY/<running no of the main input batch>; reused if this item already has it."""
+	main_input = main_input_batch(doc)
+	prefix = (frappe.db.get_value("Item", item_code, "batch_number_series") or "").split("/")[0].strip(".")
+	parts = (main_input or "").split("/")
+	if not prefix or len(parts) < 3:
+		return None  # no input batch in PREFIX/FY/NO format
+	name = "/".join([prefix, *parts[1:]])
+	owner = frappe.db.get_value("Batch", name, "item")
+	if owner and owner != item_code:
+		return None  # number taken by another item: fall back to the series
+	if not owner:
+		new_batch(item_code, doc, name)
+	elif doc.work_order and not frappe.db.get_value("Batch", name, "work_order"):
+		frappe.db.set_value("Batch", name, "work_order", doc.work_order)
+	return name
+
+
+def main_input_batch(doc):
+	"""Input batch with the largest qty: the row's batch, else this Work Order's transfers,
+	else the batch FIFO will pick at submit."""
+	rows = [d for d in doc.items if d.s_warehouse and not d.is_finished_item and not d.secondary_item_type]
+	inputs = [(b, abs(flt(q))) for d in rows for b, q in row_batches(d) if b]
+	if not inputs and doc.work_order:
+		items = {d.item_code for d in rows}
+		for se in frappe.get_all("Stock Entry", {"work_order": doc.work_order, "docstatus": 1,
+				"purpose": "Material Transfer for Manufacture"}, pluck="name"):
+			for d in frappe.get_doc("Stock Entry", se).items:
+				if d.item_code in items:
+					inputs += [(b, abs(flt(q))) for b, q in row_batches(d) if b]
+	if not inputs:
+		inputs = [(b, q) for d in rows for b, q in fifo_batches(d)]
+	return inputs and max(inputs, key=lambda x: x[1])[0]
+
+
+def fifo_batches(row):
+	from erpnext.stock.doctype.serial_and_batch_bundle.serial_and_batch_bundle import get_auto_batch_nos
+
+	if not frappe.db.get_value("Item", row.item_code, "has_batch_no"):
+		return []
+	picked = get_auto_batch_nos(frappe._dict(item_code=row.item_code, warehouse=row.s_warehouse,
+		qty=row.transfer_qty or row.qty, based_on="FIFO"))
+	return [(b.batch_no, flt(b.qty)) for b in picked or [] if b.get("batch_no")]
+
+
+def new_batch(item_code, doc, name=None):
 	# Work Order set now so a second draft of the same order finds this batch
-	batch = frappe.get_doc({"doctype": "Batch", "item": item_code, "work_order": doc.work_order,
+	batch = frappe.get_doc({"doctype": "Batch", "item": item_code, "batch_id": name, "work_order": doc.work_order,
 		"manufacturing_date": doc.posting_date})
 	batch.flags.ignore_links = True
 	return batch.insert(ignore_permissions=True).name
@@ -104,9 +154,13 @@ def set_batch_orders(doc):
 		sos = frappe.get_all("Production Plan Sales Order", {"parent": wo.production_plan}, pluck="sales_order")
 		so = sos[0] if len(set(sos)) == 1 else None
 	for batch in output_batches(doc):
-		# no reference_name: ERPNext would delete the shared batch when one daily entry is cancelled
-		frappe.db.set_value("Batch", batch, {"work_order": doc.work_order, "sales_order": so,
-			"production_plan": wo.production_plan})
+		# keep the first order's details when several Work Orders share a batch number;
+		# no reference_name, as ERPNext would delete the shared batch on cancel
+		current = frappe.db.get_value("Batch", batch, ["work_order", "sales_order", "production_plan"], as_dict=True)
+		values = {"work_order": doc.work_order, "sales_order": so, "production_plan": wo.production_plan}
+		missing = {k: v for k, v in values.items() if v and not current.get(k)}
+		if missing:
+			frappe.db.set_value("Batch", batch, missing)
 
 
 def link_batches(doc):
