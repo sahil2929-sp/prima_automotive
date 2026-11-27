@@ -22,8 +22,9 @@ def get_columns():
 		{"label": _("Stage"), "fieldname": "stage", "fieldtype": "Data", "width": 95},
 		{"label": _("Item"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 130},
 		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 190},
-		{"label": _("Operator"), "fieldname": "operator_name", "fieldtype": "Data", "width": 120},
-		{"label": _("Machine"), "fieldname": "machine_no", "fieldtype": "Data", "width": 90},
+		{"label": _("Operator"), "fieldname": "operator", "fieldtype": "Link", "options": "Employee", "width": 115},
+		{"label": _("Operator Name"), "fieldname": "operator_name", "fieldtype": "Data", "width": 130},
+		{"label": _("Machine"), "fieldname": "machine", "fieldtype": "Link", "options": "Workstation", "width": 110},
 		{"label": _("Pieces Made"), "fieldname": "produced_qty", "fieldtype": "Float", "width": 105, "precision": 0},
 		{"label": _("WO Qty"), "fieldname": "wo_qty", "fieldtype": "Float", "width": 85, "precision": 0},
 		{"label": _("Made So Far"), "fieldname": "cumulative_qty", "fieldtype": "Float", "width": 105, "precision": 0},
@@ -42,7 +43,7 @@ def get_data(filters):
 		.join(fg).on((fg.parent == se.name) & (fg.is_finished_item == 1))
 		.join(wo).on(wo.name == se.work_order)
 		.select(
-			se.name.as_("stock_entry"), se.posting_date, se.posting_time, se.work_order, se.machine_no, se.operator_name,
+			se.name.as_("stock_entry"), se.posting_date, se.posting_time, se.work_order, se.machine, se.operator, se.operator_name,
 			fg.name.as_("row_name"), fg.item_code, fg.item_name, fg.transfer_qty.as_("produced_qty"), fg.batch_no,
 			fg.serial_and_batch_bundle, wo.qty.as_("wo_qty"), wo.sales_order, wo.production_plan,
 		)
@@ -70,8 +71,7 @@ def get_data(filters):
 			continue
 		if filters.to_date and str(r.posting_date) > str(filters.to_date):
 			continue
-		if any(filters.get(f) and filters.get(f).lower() not in (r.get(f) or "").lower()
-				for f in ("operator_name", "machine_no")):
+		if any(filters.get(f) and filters.get(f) != r.get(f) for f in ("operator", "machine")):
 			continue
 		r.stage = STAGES.get(r.item_code.split("-")[0], "")
 		r.cumulative_qty = made[r.work_order]
@@ -103,7 +103,7 @@ def get_summary(data):
 		{"label": _("Pieces Made"), "value": sum(flt(r.produced_qty) for r in data), "datatype": "Float", "indicator": "Blue"},
 		{"label": _("Entries"), "value": len(data), "datatype": "Int"},
 		{"label": _("Work Orders"), "value": len({r.work_order for r in data}), "datatype": "Int"},
-		{"label": _("Operators"), "value": len({r.operator_name for r in data if r.operator_name}), "datatype": "Int"},
+		{"label": _("Operators"), "value": len({r.operator for r in data if r.operator}), "datatype": "Int"},
 		{"label": _("Scrap (Kg)"), "value": sum(flt(r.scrap_qty) for r in data), "datatype": "Float", "indicator": "Red"},
 	]
 
@@ -111,7 +111,7 @@ def get_summary(data):
 def get_chart(data):
 	by_operator = {}
 	for r in data:
-		key = r.operator_name or _("Not set")
+		key = r.operator_name or r.operator or _("Not set")
 		by_operator[key] = by_operator.get(key, 0) + flt(r.produced_qty)
 	if not by_operator:
 		return None
