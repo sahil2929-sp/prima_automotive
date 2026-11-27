@@ -4,9 +4,12 @@ from frappe.custom.doctype.property_setter.property_setter import make_property_
 
 CUSTOM_FIELDS = {
 	"Stock Entry": [
-		{"fieldname": "actual_scrap_entered", "label": "Actual Scrap Qty Entered", "fieldtype": "Check",
-			"insert_after": "from_bom", "depends_on": "eval:doc.purpose=='Manufacture'",
-			"description": "Tick after updating scrap rows with the actual shop-floor qty"},
+		{"fieldname": "machine_no", "label": "Machine No.", "fieldtype": "Data", "insert_after": "fg_completed_qty",
+			"depends_on": "eval:doc.purpose=='Manufacture'", "mandatory_depends_on": "eval:doc.purpose=='Manufacture'",
+			"in_standard_filter": 1},
+		{"fieldname": "operator_name", "label": "Operator Name", "fieldtype": "Data", "insert_after": "machine_no",
+			"depends_on": "eval:doc.purpose=='Manufacture'", "mandatory_depends_on": "eval:doc.purpose=='Manufacture'",
+			"in_standard_filter": 1},
 	],
 	"Stock Entry Detail": [
 		{"fieldname": "standard_scrap_qty", "label": "Standard Scrap Qty (BOM)", "fieldtype": "Float",
@@ -83,6 +86,9 @@ PROPERTY_SETTERS = [
 
 def after_migrate():
 	create_custom_fields(CUSTOM_FIELDS, update=True)
+	# operator now enters scrap directly; the confirmation tick is no longer used
+	if frappe.db.exists("Custom Field", "Stock Entry-actual_scrap_entered"):
+		frappe.delete_doc("Custom Field", "Stock Entry-actual_scrap_entered", ignore_permissions=True)
 	for doctype, field, prop, value, ptype in PROPERTY_SETTERS:
 		make_property_setter(doctype, field, prop, value, ptype, validate_fields_for_doctype=False)
 	# show standard in item dropdowns (same names exist under different standards)

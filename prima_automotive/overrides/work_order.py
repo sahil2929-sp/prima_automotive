@@ -102,35 +102,3 @@ def set_sources(doc):
 		# header source copies to every row, so set it only when all rows agree
 		doc.source_warehouse = sources.pop() if len(sources) == 1 else None
 
-
-def before_submit(doc, method=None):
-	check_previous_stage(doc)
-
-
-def check_previous_stage(wo):
-	"""A stage (WO submit or production) waits until the previous stage of the same
-	Production Plan chain is complete."""
-	if not wo.production_plan:
-		return
-	fg_row = wo.production_plan_item or frappe.db.get_value(
-		"Production Plan Sub Assembly Item", wo.production_plan_sub_assembly_item, "production_plan_item")
-	prev_rows = frappe.get_all("Production Plan Sub Assembly Item", {"parent": wo.production_plan,
-		"production_plan_item": fg_row, "parent_item_code": wo.production_item, "qty": [">", 0]}, pluck="name")
-	if not prev_rows:
-		return  # first stage, or the previous stage is covered from stock
-	prev = frappe.get_all("Work Order", {"production_plan_sub_assembly_item": ["in", prev_rows], "docstatus": ["<", 2]},
-		["name", "production_item", "status"])
-	pending = [w for w in prev if w.status not in ("Completed", "Closed")]
-	if pending or not prev:
-		from frappe.utils import get_link_to_form
-
-		rows = "".join(
-			f"<li>{get_link_to_form('Work Order', w.name)}: {get_link_to_form('Item', w.production_item)}"
-			f" &ndash; <b>{_(w.status)}</b></li>" for w in pending
-		) or f"<li>{_('Work Order not created')}</li>"
-		frappe.throw(
-			_("Complete the previous stage of this chain first:") + f"<ul>{rows}</ul>"
-			+ _("Then {0} can go ahead ({1}).").format(
-				get_link_to_form("Item", wo.production_item), get_link_to_form("Production Plan", wo.production_plan)),
-			title=_("Previous Stage Pending"),
-		)

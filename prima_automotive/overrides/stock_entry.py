@@ -2,26 +2,38 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-from prima_automotive.overrides.work_order import check_previous_stage
-
 
 def validate(doc, method=None):
 	if doc.purpose == "Manufacture":
+		check_machine_operator(doc)
 		set_standard_scrap_qty(doc)
 		set_output_batch(doc)
 
 
+def check_machine_operator(doc):
+	"""Each daily production entry records who ran it and on which machine."""
+	missing = [_(label) for field, label in (("machine_no", "Machine No."), ("operator_name", "Operator Name"))
+		if not (doc.get(field) or "").strip()]
+	if missing:
+		frappe.throw(_("Please enter {0} for this production entry.").format(" and ".join(missing)),
+			title=_("Missing Details"))
+
+
 def set_output_batch(doc):
-	"""Show the output batch on the draft: STAGE/FY/<running no of main input batch>."""
-	main_input = main_input_batch(doc)
-	if not main_input:
-		return
+	"""Show the output batch on the draft: STAGE/FY/<running no of main input batch>.
+	Daily entries of one Work Order keep adding to that Work Order's batch."""
+	main_input = None
 	for row in doc.items:
 		if not row.is_finished_item or row.batch_no or row.serial_and_batch_bundle:
 			continue
 		if not frappe.db.get_value("Item", row.item_code, "has_batch_no"):
 			continue
-		name = batch_name_for(row.item_code, main_input, doc)
+		name = work_order_batch(row.item_code, doc.work_order)
+		if not name:
+			main_input = main_input or main_input_batch(doc)
+			if not main_input:
+				return
+			name = batch_name_for(row.item_code, main_input, doc)
 		if not name:
 			continue
 		if not frappe.db.exists("Batch", name):
@@ -30,6 +42,13 @@ def set_output_batch(doc):
 			frappe.get_doc({"doctype": "Batch", "batch_id": name, "item": row.item_code}).insert(ignore_permissions=True)
 		row.use_serial_batch_fields = 1
 		row.batch_no = name
+
+
+def work_order_batch(item_code, work_order):
+	"""Batch already made for this item by an earlier entry of the same Work Order."""
+	return work_order and frappe.db.get_value(
+		"Batch", {"item": item_code, "work_order": work_order}, "name", order_by="creation asc"
+	)
 
 
 def main_input_batch(doc):
@@ -84,20 +103,6 @@ def unused_batch(name, item_code, entry):
 		and not frappe.db.exists("Serial and Batch Entry", {"batch_no": name, "docstatus": 1})
 		and not frappe.db.exists("Stock Entry Detail", {"batch_no": name, "docstatus": 0, "parent": ["!=", entry]})
 	)
-
-
-def before_validate(doc, method=None):
-	# runs before ERPNext's stock checks (also on draft save), so the user sees why the stage is blocked
-	if doc.docstatus < 2 and doc.purpose == "Manufacture" and doc.work_order:
-		check_previous_stage(frappe.get_doc("Work Order", doc.work_order))
-
-
-def before_submit(doc, method=None):
-	if doc.purpose == "Manufacture" and scrap_rows(doc) and not doc.get("actual_scrap_entered"):
-		frappe.throw(
-			_("Update scrap rows with the actual shop-floor qty and tick <b>Actual Scrap Qty Entered</b>."),
-			title=_("Actual Scrap Required"),
-		)
 
 
 def on_submit(doc, method=None):
